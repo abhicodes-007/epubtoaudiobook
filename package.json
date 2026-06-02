@@ -1,0 +1,18 @@
+{
+  "name": "epub-to-audiobook",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "cd server && uvicorn main:app --reload --port 8787"
+  },
+  "dependencies": {
+    "epubjs": "^0.3.93"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
