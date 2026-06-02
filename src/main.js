@@ -9,6 +9,7 @@ import {
   getServerInfo,
   fetchVoices,
   synthesizeSentence,
+  synthesizeWithRetry,
   probeServerTts,
   createAudioPlayer,
   createSpeechFallback,
@@ -35,6 +36,8 @@ const state = {
   ttsMode: "browser",
   pipeline: null,
   playGeneration: 0,
+  consecutiveFailures: 0,
+  recoveryProbeTimer: null,
 };
 
 const player = createAudioPlayer();
@@ -247,33 +250,73 @@ function showError(message) {
   el.errorBanner.classList.remove("hidden");
 }
 
+/**
+ * Periodically probe whether the server TTS has recovered.
+ * After switching to browser mode due to consecutive failures,
+ * this function checks every 30s if the server is back online.
+ * Once it responds, we switch back to server mode.
+ */
+function scheduleServerRecoveryProbe() {
+  // Clear any existing probe timer
+  if (state.recoveryProbeTimer) {
+    clearTimeout(state.recoveryProbeTimer);
+    state.recoveryProbeTimer = null;
+  }
+  state.recoveryProbeTimer = setTimeout(async () => {
+    // Don't probe if already back in server mode or still playing
+    if (state.ttsMode === "server" || state.playing) {
+      state.recoveryProbeTimer = null;
+      return;
+    }
+    const works = await probeServerTts(state.voice);
+    if (works) {
+      state.ttsMode = "server";
+      state.consecutiveFailures = 0;
+      updateServerStatus();
+      showError("Server TTS recovered — switching back to cloud voice.");
+    } else {
+      // Still down, check again in 30s
+      scheduleServerRecoveryProbe();
+    }
+  }, 30000);
+}
+
 async function synthesizeForPipeline(text) {
   if (state.ttsMode === "server") {
     try {
-      const blob = await synthesizeSentence(text, state.voice);
+      const blob = await synthesizeWithRetry(text, state.voice);
+      state.consecutiveFailures = 0;
       return { type: "audio", blob };
     } catch (err) {
-      console.warn("Server TTS failed, using browser:", err);
-      state.ttsMode = "browser";
-      updateServerStatus();
-      showError(
-        "Cloud TTS unavailable \u2014 using your Mac/browser voice instead. Audio should still play."
-      );
+      console.warn("Server TTS failed after retries:", err);
+      state.consecutiveFailures = (state.consecutiveFailures || 0) + 1;
+      // Only fall back to browser after 3 consecutive failures
+      if (state.consecutiveFailures >= 3) {
+        state.ttsMode = "browser";
+        updateServerStatus();
+        showError(
+          "Cloud TTS unavailable \u2014 using your Mac/browser voice instead. Audio should still play."
+        );
+        scheduleServerRecoveryProbe();
+      }
+      // Fall back to browser for this sentence
+      return { type: "speech", text };
     }
   }
-  return speechFallback.synthesize(text);
+  // Browser mode
+  return { type: "speech", text };
 }
 
 async function playItem(item, sentenceText, rate) {
-  if (item?.type === "audio" && item.blob) {
+  if (item.type === "audio") {
     await player.play(item.blob, rate);
-    return;
+  } else {
+    const speechItem =
+      item?.type === "speech"
+        ? item
+        : { type: "speech", text: sentenceText };
+    await speechFallback.play(speechItem, rate);
   }
-  const speechItem =
-    item?.type === "speech"
-      ? item
-      : { type: "speech", text: sentenceText };
-  await speechFallback.play(speechItem, rate);
 }
 
 async function init() {
@@ -311,7 +354,7 @@ async function init() {
       el.dotReady.classList.toggle("ready", ready > 0);
       el.dotLoading.classList.toggle("loading", loading > 0);
     },
-    lookahead: 2,
+    lookahead: 1,
   });
 
   // If no API key is set, show a hint

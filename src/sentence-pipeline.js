@@ -2,7 +2,7 @@
  * Prefetch pipeline: synthesize sentence N+1 while playing sentence N.
  */
 export class SentencePipeline {
-  constructor({ synthesize, onStatus, lookahead = 2 }) {
+  constructor({ synthesize, onStatus, lookahead = 1 }) {
     this.synthesize = synthesize;
     this.onStatus = onStatus || (() => {});
     this.lookahead = lookahead;
@@ -10,6 +10,7 @@ export class SentencePipeline {
     this.inFlight = new Map();
     this.aborted = false;
     this.generation = 0;
+    this._prefetchDelay = 200; // ms between prefetch requests
   }
 
   reset() {
@@ -53,10 +54,14 @@ export class SentencePipeline {
     return promise;
   }
 
-  prefetchRange(sentences, startIndex, voice, gen) {
+  async prefetchRange(sentences, startIndex, voice, gen) {
     const end = Math.min(sentences.length, startIndex + this.lookahead);
     for (let i = startIndex; i < end; i++) {
       if (!this.cache.has(i) && !this.inFlight.has(i)) {
+        // Throttle: wait before starting next prefetch to avoid API rate limits
+        if (i > startIndex) {
+          await new Promise((r) => setTimeout(r, this._prefetchDelay));
+        }
         this.ensure(i, sentences[i], voice, gen).catch(() => {});
       }
     }

@@ -75,6 +75,28 @@ export async function probeServerTts(voice) {
   }
 }
 
+/**
+ * Retry a TTS synthesis call with exponential backoff.
+ * Returns the audio blob on success, throws after all retries exhausted.
+ */
+export async function synthesizeWithRetry(text, voice, { maxRetries = 3, baseDelay = 1000 } = {}) {
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const blob = await synthesizeSentence(text, voice);
+      return blob;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`TTS attempt ${attempt + 1} failed, retrying in ${delay}ms...`, err.message);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function ensureSpeechReady() {
   if (typeof speechSynthesis === "undefined") return false;
   if (speechSynthesis.getVoices().length > 0) return true;
