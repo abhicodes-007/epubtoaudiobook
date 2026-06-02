@@ -1,4 +1,4 @@
-const API_BASE = "";
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export function getApiKey() {
   return localStorage.getItem("tts_api_key") || "";

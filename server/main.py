@@ -3,12 +3,13 @@ import io
 import os
 import platform
 import wave
+import pathlib
 
 import riva.client
 import riva.client.proto.riva_audio_pb2 as ra
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="EPUB Audiobook TTS")
@@ -147,3 +148,21 @@ async def synthesize(req: TTSRequest, x_api_key: str = Header(..., alias="X-API-
             status_code=503,
             detail=f"Riva TTS unavailable: {str(e)}"
         )
+
+
+# --- Serve the Vite frontend build (production) ---
+
+STATIC_DIR = pathlib.Path(__file__).resolve().parent.parent / "dist"
+
+if STATIC_DIR.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Catch-all: serve static files, fall back to index.html for SPA routing."""
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(STATIC_DIR / "index.html"))
