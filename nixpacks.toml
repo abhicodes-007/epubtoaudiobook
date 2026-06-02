@@ -1,0 +1,13 @@
+[phases.setup]
+nixPkgs = ["python311", "python311Packages.pip"]
+
+[phases.install]
+cmds = [
+  "cd server && pip install -r requirements.txt"
+]
+
+[phases.build]
+cmds = []
+
+[phases.start]
+cmd = "cd server && uvicorn main:app --host 0.0.0.0 --port $PORT"
