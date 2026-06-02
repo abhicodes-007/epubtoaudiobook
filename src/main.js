@@ -42,6 +42,7 @@ const state = {
   consecutiveFailures: 0,
   recoveryProbeTimer: null,
   lastServerFailure: 0,
+  voiceChangeId: 0,
   autoNextChapter: localStorage.getItem(AUTO_NEXT_KEY) === "true",
 };
 
@@ -53,6 +54,8 @@ function buildVoiceName() {
   return `Magpie-Multilingual.EN-US.${state.speaker}.${state.emotion}`;
 }
 
+let voiceChangeDebounceTimer = null;
+
 function updateVoice() {
   const wasPlaying = state.playing && !state.paused;
   const currentIndex = state.currentSentenceIndex;
@@ -63,13 +66,26 @@ function updateVoice() {
   // Reset pipeline with new voice
   state.pipeline?.reset();
   
-  // If currently playing, restart from current sentence with new voice
+  // Reset consecutive failures so rapid switching doesn't trigger browser mode
+  state.consecutiveFailures = 0;
+  
+  // Debounce: cancel any pending restart from a previous voice change
+  if (voiceChangeDebounceTimer) {
+    clearTimeout(voiceChangeDebounceTimer);
+    voiceChangeDebounceTimer = null;
+  }
+  
   if (wasPlaying) {
     stopPlayback();
-    setTimeout(() => {
+    const changeId = ++state.voiceChangeId;
+    // Wait 300ms after the LAST voice change before restarting
+    voiceChangeDebounceTimer = setTimeout(() => {
+      voiceChangeDebounceTimer = null;
+      // Only restart if this is still the latest voice change
+      if (changeId !== state.voiceChangeId) return;
       state.currentSentenceIndex = currentIndex;
       playFromCurrent();
-    }, 100);
+    }, 300);
   }
 }
 
