@@ -4,12 +4,22 @@ import os
 import platform
 import wave
 import pathlib
-import httpx
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel, Field
+
+# Lazy import riva so the app starts even if gRPC libs are broken
+riva = None
+riva_client = None
+
+def _load_riva():
+    global riva, riva_client
+    if riva is None:
+        import riva.client as _rc
+        riva = _rc
+        riva_client = _rc
 
 app = FastAPI(title="EPUB Audiobook TTS")
 
@@ -21,17 +31,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Nvidia NIM API Configuration
-NIM_TTS_URL = os.environ.get(
-    "NIM_TTS_URL",
-    "https://integrate.api.nvidia.com/v1/tts"
-)
+# Riva TTS Configuration
+RIVA_SERVER = os.environ.get("RIVA_SERVER", "grpc.nvcf.nvidia.com:443")
+RIVA_FUNCTION_ID = os.environ.get("RIVA_FUNCTION_ID", "877104f7-e885-42b9-8de8-f6e4c6303969")
+RIVA_DEFAULT_VOICE = "Magpie-Multilingual.EN-US.Aria.Neutral"
 
-# Magpie TTS configuration
+# Magpie TTS voice configuration
 MAGPIE_SPEAKERS = ["Aria", "Mia", "Jason", "Leo", "Sofia", "Ray", "Pascal", "Diego"]
 MAGPIE_EMOTIONS = ["Neutral", "Calm", "Angry", "Happy", "Sad", "Fearful"]
 MAGPIE_LOCALE = "EN-US"
-RIVA_DEFAULT_VOICE = "Magpie-Multilingual.EN-US.Aria.Neutral"
 
 
 def get_magpie_voices():
@@ -49,57 +57,37 @@ def get_magpie_voices():
     return voices
 
 
-def _synthesize_nim(text: str, voice: str, api_key: str) -> bytes:
-    """Synthesize speech using NVIDIA NIM REST API (no gRPC needed)."""
-    if not api_key:
-        raise RuntimeError("API key is required")
+def _synthesize_riva(text: str, voice: str, api_key: str) -> bytes:
+    """Synthesize speech using Riva TTS."""
+    _load_riva()
+
+    auth = riva_client.Auth(
+        uri=RIVA_SERVER,
+        use_ssl=True,
+        metadata_args=[
+            ("function-id", RIVA_FUNCTION_ID),
+            ("authorization", f"Bearer {api_key}"),
+        ],
+    )
+    service = riva_client.SpeechSynthesisService(auth)
 
     # Validate voice name
     if not voice.startswith("Magpie-Multilingual"):
         print(f"Warning: Invalid voice name '{voice}', using default")
         voice = RIVA_DEFAULT_VOICE
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "Accept": "audio/wav",
-    }
-    payload = {
-        "model": "nvidia/magpie-tts-multilingual",
-        "input": text,
-        "voice": voice,
-        "response_format": "wav",
-        "sample_rate": 44100,
-    }
+    response = service.synthesize(
+        text=text,
+        voice_name=voice,
+        language_code="en-US",
+        encoding=riva_client.AudioEncoding.LINEAR_PCM,
+        sample_rate_hz=44100,
+    )
 
-    # Use a fresh client per request to avoid connection pool issues
-    with httpx.Client(timeout=60.0) as client:
-        resp = client.post(NIM_TTS_URL, json=payload, headers=headers)
+    audio = response.audio
+    if not audio:
+        raise RuntimeError("Riva returned empty audio")
 
-    if resp.status_code != 200:
-        detail = resp.text[:500] if resp.text else f"HTTP {resp.status_code}"
-        raise RuntimeError(f"NIM API error ({resp.status_code}): {detail}")
-
-    content_type = resp.headers.get("content-type", "")
-    if "json" in content_type:
-        # NIM may return JSON error even with 200
-        import json
-        try:
-            body = resp.json()
-            if "detail" in body or "error" in body:
-                raise RuntimeError(f"NIM API: {body.get('detail', body.get('error', str(body)))}")
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-    audio = resp.content
-    if len(audio) < 400:
-        raise RuntimeError(f"NIM returned too few bytes ({len(audio)}): {audio[:200]}")
-
-    # If already WAV (starts with RIFF), return directly
-    if audio[:4] == b"RIFF":
-        return audio
-
-    # Otherwise treat as raw PCM and wrap in WAV
     return _pcm_to_wav(audio, sample_rate=44100)
 
 
@@ -124,14 +112,14 @@ async def health():
     return {
         "ok": True,
         "platform": platform.system(),
-        "tts_backend": "nvidia-nim"
+        "tts_backend": "nvidia-riva"
     }
 
 
 @app.get("/api/config")
 async def get_config():
     return {
-        "nim_tts_url": NIM_TTS_URL,
+        "riva_server": RIVA_SERVER,
     }
 
 
@@ -148,7 +136,7 @@ async def synthesize(req: TTSRequest, x_api_key: str = Header(..., alias="X-API-
         raise HTTPException(status_code=400, detail="Empty text")
 
     try:
-        audio = await asyncio.to_thread(_synthesize_nim, text, req.voice, x_api_key)
+        audio = await asyncio.to_thread(_synthesize_riva, text, req.voice, x_api_key)
         return Response(content=audio, media_type="audio/wav")
     except Exception as e:
         raise HTTPException(
