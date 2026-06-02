@@ -10,7 +10,7 @@ export class SentencePipeline {
     this.inFlight = new Map();
     this.aborted = false;
     this.generation = 0;
-    this._prefetchDelay = 200; // ms between prefetch requests
+    this._prefetchDelay = 400; // ms between prefetch requests
   }
 
   reset() {

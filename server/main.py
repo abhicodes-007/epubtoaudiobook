@@ -38,9 +38,9 @@ RIVA_FUNCTION_ID = os.environ.get("RIVA_FUNCTION_ID", "877104f7-e885-42b9-8de8-f
 RIVA_DEFAULT_VOICE = "Magpie-Multilingual.EN-US.Aria.Neutral"
 
 # Rate limiting: cap concurrent TTS requests and add min delay between them
-_tts_semaphore = asyncio.Semaphore(2)
+_tts_semaphore = asyncio.Semaphore(1)
 _last_tts_time: float = 0.0
-_MIN_TTS_INTERVAL: float = 0.5  # seconds between requests
+_MIN_TTS_INTERVAL: float = 0.8  # seconds between requests
 
 # Retry configuration
 _TTS_MAX_RETRIES: int = 3

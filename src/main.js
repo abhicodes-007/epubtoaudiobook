@@ -17,11 +17,14 @@ import {
   setApiKey,
 } from "./tts.js";
 
+const AUTO_NEXT_KEY = "tts_auto_next_chapter";
+
 const state = {
   book: null,
   chapters: [],
   title: "",
   currentChapter: null,
+  currentChapterIndex: -1,
   blocks: [],
   sentences: [],
   blockIndexBySentence: [],
@@ -38,6 +41,8 @@ const state = {
   playGeneration: 0,
   consecutiveFailures: 0,
   recoveryProbeTimer: null,
+  lastServerFailure: 0,
+  autoNextChapter: localStorage.getItem(AUTO_NEXT_KEY) === "true",
 };
 
 const player = createAudioPlayer();
@@ -125,35 +130,50 @@ function renderShell() {
           <p class="placeholder">Upload an EPUB, pick a chapter, then press Play to hear sentence-by-sentence audio with the next sentence synthesized in parallel.</p>
         </article>
         <footer class="player-bar">
-          <div class="player-controls">
-            <button class="btn btn-icon" id="btn-prev" title="Previous sentence" disabled>⏮</button>
-            <button class="btn btn-icon btn-primary" id="btn-play" title="Play" disabled>▶</button>
-            <button class="btn btn-icon" id="btn-next" title="Next sentence" disabled>⏭</button>
-            <button class="btn" id="btn-stop" disabled>Stop</button>
-          </div>
-          <div class="progress-wrap">
-            <div class="progress-label">
-              <span id="progress-text">—</span>
-              <span id="progress-pct">0%</span>
+          <div class="player-row-top">
+            <div class="player-controls">
+              <button class="btn btn-icon chapter-nav-btn" id="btn-prev-chapter" title="Previous chapter" disabled>⏮⏮</button>
+              <button class="btn btn-icon" id="btn-prev" title="Previous sentence" disabled>⏮</button>
+              <button class="btn btn-icon btn-primary play-btn" id="btn-play" title="Play" disabled>▶</button>
+              <button class="btn btn-icon" id="btn-next" title="Next sentence" disabled>⏭</button>
+              <button class="btn btn-icon chapter-nav-btn" id="btn-next-chapter" title="Next chapter" disabled>⏭⏭</button>
+              <button class="btn btn-stop" id="btn-stop" disabled>Stop</button>
             </div>
-            <div class="progress-track" id="progress-track">
-              <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+            <div class="auto-next-group">
+              <label class="toggle-label" for="auto-next-toggle">
+                <span class="toggle-switch" id="auto-next-toggle-track">
+                  <input type="checkbox" id="auto-next-toggle" ${state.autoNextChapter ? "checked" : ""} />
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="toggle-text">Auto Next Chapter</span>
+              </label>
             </div>
           </div>
-          <div class="voice-controls">
-            <label for="voice-select">Voice</label>
-            <select id="voice-select" disabled>
-              <option value="Aria">Loading...</option>
-            </select>
-            <label for="emotion-select">Emotion</label>
-            <select id="emotion-select" disabled>
-              <option value="Neutral">Loading...</option>
-            </select>
-          </div>
-          <div class="speed-control">
-            <label for="rate">Speed</label>
-            <input type="range" id="rate" min="0.75" max="1.75" step="0.05" value="1" />
-            <span id="rate-label">1.0×</span>
+          <div class="player-row-bottom">
+            <div class="progress-wrap">
+              <div class="progress-label">
+                <span id="progress-text">—</span>
+                <span id="progress-pct">0%</span>
+              </div>
+              <div class="progress-track" id="progress-track">
+                <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="voice-controls">
+              <label for="voice-select">Voice</label>
+              <select id="voice-select" disabled>
+                <option value="Aria">Loading...</option>
+              </select>
+              <label for="emotion-select">Emotion</label>
+              <select id="emotion-select" disabled>
+                <option value="Neutral">Loading...</option>
+              </select>
+            </div>
+            <div class="speed-control">
+              <label for="rate">Speed</label>
+              <input type="range" id="rate" min="0.75" max="1.75" step="0.05" value="1" />
+              <span id="rate-label">1.0×</span>
+            </div>
           </div>
         </footer>
       </div>
@@ -174,6 +194,9 @@ function renderShell() {
   el.dotLoading = document.getElementById("dot-loading");
   el.errorBanner = document.getElementById("error-banner");
   el.apiKeyInput = document.getElementById("api-key-input");
+  el.prevChapterBtn = document.getElementById("btn-prev-chapter");
+  el.nextChapterBtn = document.getElementById("btn-next-chapter");
+  el.autoNextToggle = document.getElementById("auto-next-toggle");
 
   // Restore saved API key into input
   const savedKey = getApiKey();
@@ -220,6 +243,14 @@ function renderShell() {
   document.getElementById("btn-prev").addEventListener("click", () => jumpSentence(-1));
   document.getElementById("btn-next").addEventListener("click", () => jumpSentence(1));
   document.getElementById("progress-track").addEventListener("click", onProgressClick);
+  
+  // Chapter navigation
+  el.prevChapterBtn.addEventListener("click", goToPrevChapter);
+  el.nextChapterBtn.addEventListener("click", goToNextChapter);
+  
+  // Auto-next toggle
+  el.autoNextToggle.addEventListener("change", toggleAutoNextChapter);
+
   el.voiceSelect.addEventListener("change", () => {
     state.speaker = el.voiceSelect.value;
     updateVoice();
@@ -252,19 +283,15 @@ function showError(message) {
 
 /**
  * Periodically probe whether the server TTS has recovered.
- * After switching to browser mode due to consecutive failures,
- * this function checks every 30s if the server is back online.
- * Once it responds, we switch back to server mode.
+ * Runs even during playback so we can switch back mid-chapter.
  */
 function scheduleServerRecoveryProbe() {
-  // Clear any existing probe timer
   if (state.recoveryProbeTimer) {
     clearTimeout(state.recoveryProbeTimer);
     state.recoveryProbeTimer = null;
   }
   state.recoveryProbeTimer = setTimeout(async () => {
-    // Don't probe if already back in server mode or still playing
-    if (state.ttsMode === "server" || state.playing) {
+    if (state.ttsMode === "server") {
       state.recoveryProbeTimer = null;
       return;
     }
@@ -273,12 +300,12 @@ function scheduleServerRecoveryProbe() {
       state.ttsMode = "server";
       state.consecutiveFailures = 0;
       updateServerStatus();
-      showError("Server TTS recovered — switching back to cloud voice.");
+      showError("Server TTS recovered \u2014 switching back to cloud voice.");
     } else {
-      // Still down, check again in 30s
+      // Still down, check again in 15s
       scheduleServerRecoveryProbe();
     }
-  }, 30000);
+  }, 15000);
 }
 
 async function synthesizeForPipeline(text) {
@@ -289,6 +316,7 @@ async function synthesizeForPipeline(text) {
       return { type: "audio", blob };
     } catch (err) {
       console.warn("Server TTS failed after retries:", err);
+      state.lastServerFailure = Date.now();
       state.consecutiveFailures = (state.consecutiveFailures || 0) + 1;
       // Only fall back to browser after 3 consecutive failures
       if (state.consecutiveFailures >= 3) {
@@ -318,6 +346,41 @@ async function playItem(item, sentenceText, rate) {
     await speechFallback.play(speechItem, rate);
   }
 }
+
+// --- Chapter Navigation ---
+
+function goToNextChapter() {
+  const nextIdx = state.currentChapterIndex + 1;
+  if (nextIdx >= state.chapters.length) return;
+  selectChapter(nextIdx);
+  // Auto-play after switching
+  setTimeout(() => {
+    if (state.sentences.length > 0) playFromCurrent();
+  }, 200);
+}
+
+function goToPrevChapter() {
+  const prevIdx = state.currentChapterIndex - 1;
+  if (prevIdx < 0) return;
+  selectChapter(prevIdx);
+  // Auto-play after switching
+  setTimeout(() => {
+    if (state.sentences.length > 0) playFromCurrent();
+  }, 200);
+}
+
+function toggleAutoNextChapter() {
+  state.autoNextChapter = el.autoNextToggle.checked;
+  localStorage.setItem(AUTO_NEXT_KEY, String(state.autoNextChapter));
+}
+
+function updateChapterNavButtons() {
+  const hasChapters = state.chapters.length > 0;
+  el.prevChapterBtn.disabled = !hasChapters || state.currentChapterIndex <= 0;
+  el.nextChapterBtn.disabled = !hasChapters || state.currentChapterIndex >= state.chapters.length - 1;
+}
+
+// --- Init ---
 
 async function init() {
   renderShell();
@@ -354,7 +417,7 @@ async function init() {
       el.dotReady.classList.toggle("ready", ready > 0);
       el.dotLoading.classList.toggle("loading", loading > 0);
     },
-    lookahead: 1,
+    lookahead: 2,
   });
 
   // If no API key is set, show a hint
@@ -427,8 +490,10 @@ async function onFileSelected(e) {
     state.book = book;
     state.chapters = chapters;
     state.title = title;
+    state.currentChapterIndex = -1;
     document.getElementById("book-title").textContent = title;
     renderChapterDropdown();
+    updateChapterNavButtons();
     el.readerContent.innerHTML =
       '<p class="placeholder">Choose a chapter from the sidebar.</p>';
   } catch (err) {
@@ -456,11 +521,13 @@ async function selectChapter(index) {
 
   stopPlayback();
   state.currentChapter = chapter;
+  state.currentChapterIndex = index;
   state.currentSentenceIndex = 0;
   state.pipeline.reset();
 
   document.getElementById("chapter-label").textContent = chapter.label;
   el.chapterSelect.value = index;
+  updateChapterNavButtons();
   el.readerContent.innerHTML = '<p class="placeholder">Loading chapter\u2026</p>';
 
   try {
@@ -623,6 +690,14 @@ async function playFromCurrent() {
     state.playing = false;
     state.paused = false;
     updateProgress();
+    
+    // Auto-advance to next chapter if enabled and playback reached the end naturally
+    if (state.autoNextChapter && state.currentSentenceIndex >= state.sentences.length - 1) {
+      const nextIdx = state.currentChapterIndex + 1;
+      if (nextIdx < state.chapters.length) {
+        setTimeout(() => goToNextChapter(), 500);
+      }
+    }
   }
 }
 
