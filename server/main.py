@@ -5,8 +5,6 @@ import platform
 import wave
 import pathlib
 
-import riva.client
-import riva.client.proto.riva_audio_pb2 as ra
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse
@@ -47,7 +45,10 @@ def get_magpie_voices():
             })
     return voices
 
+
 def get_tts_service(api_key: str):
+    """Lazy import riva client to avoid import-time crashes from grpcio conflicts."""
+    import riva.client
     if not api_key:
         return None
     try:
@@ -83,6 +84,8 @@ def _pcm_to_wav(pcm_data: bytes, sample_rate: int = 44100, channels: int = 1, sa
 
 def _synthesize_riva(text: str, voice: str, api_key: str) -> bytes:
     """Synthesize speech using Nvidia Riva API with Magpie TTS."""
+    import riva.client.proto.riva_audio_pb2 as ra
+
     tts_service = get_tts_service(api_key)
     if not tts_service:
         raise RuntimeError("Riva TTS service not initialized or API key missing")
