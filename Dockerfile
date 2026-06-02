@@ -26,7 +26,5 @@ WORKDIR /app/server
 
 EXPOSE 8080
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
-# Note: Railway overrides CMD with startCommand from railway.json
-# The startCommand respects $PORT set by Railway
-# Note: Railway overrides CMD with startCommand from railway.json
+# Railway overrides CMD with startCommand from railway.json
 # The startCommand respects $PORT set by Railway
