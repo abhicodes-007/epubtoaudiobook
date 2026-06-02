@@ -2,6 +2,12 @@
 
 A web app that turns EPUB chapters into listenable audiobooks, one sentence at a time. While you hear the current sentence, the next one is synthesized in parallel so playback stays smooth.
 
+## 🚀 Live Demo
+
+**[Try it now → epubtoaudiobook-production.up.railway.app](https://epubtoaudiobook-production.up.railway.app)**
+
+> You'll need your own [NVIDIA Magpie TTS API key](https://build.nvidia.com/nvidia/magpie-tts-multilingual) to use the TTS feature. The app also falls back to browser speech synthesis if no server-side TTS is available.
+
 ## Features
 
 - Upload any `.epub` file in the browser
@@ -53,6 +59,24 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 If the server is not running, the app falls back to the browser's built-in speech synthesis. Playback still works, but sentences are processed sequentially (no real parallel prefetch).
 
+## Deployment
+
+The app is deployed on [Railway](https://railway.app) as a single full-stack service:
+
+- **Build**: Vite builds the frontend, FastAPI serves it as static files
+- **Runtime**: FastAPI handles both `/api/*` routes and serves the SPA
+- **Environment variables**: Set `VITE_API_URL` in Railway to point API calls to the live backend (defaults to same-origin in production)
+
+### Deploy your own
+
+```bash
+# Fork the repo, then:
+railway init
+railway up
+```
+
+Or connect your GitHub repo to Railway for automatic deployments on every push.
+
 ## How the pipeline works
 
 ```
@@ -67,6 +91,7 @@ When sentence *N* starts playing, the app requests TTS for *N+1* and *N+2* from 
 
 - **Frontend**: Vite, [epub.js](https://github.com/futurepress/epub.js), `Intl.Segmenter` for sentence splitting
 - **Backend**: FastAPI + [NVIDIA Riva TTS](https://build.nvidia.com/nvidia/magpie-tts-multilingual) (user-provided API key)
+- **Deployment**: Railway (Nixpacks — Node.js + Python)
 
 ## Project layout
 
@@ -79,8 +104,14 @@ epubtoaudiobook/
 ├── server/        # FastAPI TTS API
 │   ├── main.py        # Routes, per-request TTS synthesis
 │   └── requirements.txt
+├── nixpacks.toml  # Railway build config
+├── railway.json   # Railway deploy config
 ├── vite.config.js
 ├── package.json
 ├── README.md
 └── RUN_TUTORIAL.md    # Step-by-step terminal guide
 ```
+
+## License
+
+MIT
