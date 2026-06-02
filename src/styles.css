@@ -35,8 +35,21 @@ body {
 
 #app {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Better touch targets on mobile */
+@media (pointer: coarse) {
+  button,
+  select,
+  .toggle-label,
+  .sentence {
+    min-height: 44px;
+  }
 }
 
 /* Header */
@@ -219,6 +232,8 @@ body {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-bottom: 160px;
 }
 
@@ -329,6 +344,7 @@ body {
   padding: 0 1px;
   cursor: pointer;
   position: relative;
+  touch-action: manipulation;
 }
 
 .sentence:hover {
@@ -375,12 +391,13 @@ body {
   z-index: 100;
   border-top: 1px solid var(--border);
   background: var(--surface);
-  padding: 0.7rem 1.25rem 0.5rem;
+  padding: 0.7rem 1.25rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .player-row-top {
@@ -653,30 +670,409 @@ select:focus {
   display: none;
 }
 
-/* Responsive: mobile */
-@media (max-width: 700px) {
-  .player-row-top {
+/* ========================================
+   Responsive: Tablet (≤900px)
+   ======================================== */
+@media (max-width: 900px) {
+  .header {
+    padding: 0.65rem 1rem;
+  }
+
+  .header-actions {
+    gap: 0.4rem;
+  }
+
+  .api-key-group {
+    padding: 0.2rem 0.3rem 0.2rem 0.5rem;
+  }
+
+  .api-key-input {
+    width: 140px;
+    font-size: 0.75rem;
+  }
+}
+
+/* ========================================
+   Responsive: Mobile (≤640px)
+   ======================================== */
+@media (max-width: 640px) {
+  /* --- Header: stack vertically --- */
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .header h1 {
+    font-size: 1rem;
+    text-align: center;
+  }
+
+  .header-actions {
+    margin-left: 0;
+    justify-content: center;
     flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .api-key-group {
+    width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
+    padding: 0.2rem 0.3rem 0.2rem 0.5rem;
+  }
+
+  .api-key-input {
+    flex: 1;
+    width: 0;
+    min-width: 0;
+    font-size: 0.75rem;
+    padding: 0.35rem 0.4rem;
+  }
+
+  .api-key-link {
+    font-size: 0.65rem;
+    display: none; /* hidden on mobile to save space, key can be pasted */
+  }
+
+  .btn-sm {
+    font-size: 0.7rem;
+    padding: 0.35rem 0.6rem;
+  }
+
+  .status-pill {
+    font-size: 0.68rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  .file-btn {
+    font-size: 0.8rem;
+    padding: 0.45rem 0.8rem;
+  }
+
+  /* --- Layout: single column --- */
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  /* --- Sidebar: horizontal bar --- */
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .sidebar-section {
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
   }
 
-  .player-row-bottom {
+  .sidebar-section label {
+    margin-bottom: 0;
+    white-space: nowrap;
+    font-size: 0.65rem;
+  }
+
+  .reader-meta#book-title {
+    display: none; /* hide "No book loaded" on mobile to save space */
+  }
+
+  .chapter-select {
+    margin-top: 0;
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 0.5rem 2rem 0.5rem 0.6rem;
+  }
+
+  /* --- Reader toolbar --- */
+  .reader-toolbar {
+    padding: 0.45rem 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .reader-meta {
+    font-size: 0.72rem;
+  }
+
+  .pipeline-status {
+    font-size: 0.65rem;
+    gap: 0.3rem;
+  }
+
+  .pipeline-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  /* --- Reader content --- */
+  .reader-content {
+    padding: 1.25rem 1rem;
+    font-size: 1rem;
+    line-height: 1.65;
+    max-width: 100%;
+    padding-bottom: 2rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .reader-content p,
+  .reader-content h1,
+  .reader-content h2,
+  .reader-content h3 {
+    padding-left: 0;
+  }
+
+  .reader-content h1 {
+    font-size: 1.3rem;
+  }
+  .reader-content h2 {
+    font-size: 1.15rem;
+  }
+  .reader-content h3 {
+    font-size: 1.05rem;
+  }
+
+  .sentence {
+    padding: 2px 0;
+    line-height: 1.6;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sentence:active {
+    background: var(--highlight);
+  }
+
+  .sentence:hover::before {
+    display: none; /* no hover on touch */
+  }
+
+  .sentence.active::before {
+    left: -14px;
+    font-size: 0.7em;
+  }
+
+  /* --- Player bar: complete mobile restructure --- */
+  .main {
+    padding-bottom: 200px; /* more room for taller mobile player */
+  }
+
+  .player-bar {
+    padding: 0.5rem 0.6rem calc(0.4rem + env(safe-area-inset-bottom, 0px));
+    gap: 0.35rem;
+  }
+
+  .player-row-top {
     flex-direction: column;
-    align-items: stretch;
+    align-items: center;
     gap: 0.4rem;
+  }
+
+  .player-controls {
+    width: 100%;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  /* Hide chapter nav buttons on small mobile — use sidebar dropdown instead */
+  .chapter-nav-btn {
+    display: none !important;
+  }
+
+  /* Make play button the hero */
+  .play-btn {
+    width: 3.2rem !important;
+    height: 3.2rem !important;
+    font-size: 1.25rem !important;
+    margin: 0 0.15rem;
+  }
+
+  .btn-icon:not(.play-btn) {
+    width: 2.6rem !important;
+    height: 2.6rem !important;
+    font-size: 1.1rem !important;
+  }
+
+  .btn-stop {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.78rem;
   }
 
   .auto-next-group {
     margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .toggle-text {
+    font-size: 0.72rem;
+  }
+
+  /* Bottom row: stack everything */
+  .player-row-bottom {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+    width: 100%;
+  }
+
+  .progress-wrap {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .progress-track {
+    height: 6px; /* bigger touch target */
+    border-radius: 3px;
   }
 
   .voice-controls {
-    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.4rem;
   }
 
-  .chapter-nav-btn {
-    font-size: 0.75rem !important;
-    width: 2.2rem !important;
-    height: 2.2rem !important;
+  .voice-controls label {
+    font-size: 0.65rem;
+  }
+
+  .voice-controls select {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.8rem;
+    padding: 0.5rem 0.5rem;
+    max-width: none;
+  }
+
+  .speed-control {
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .speed-control input[type="range"] {
+    flex: 1;
+    width: auto;
+    height: 6px;
+    accent-color: var(--accent);
+  }
+
+  .speed-control label {
+    font-size: 0.65rem;
+    white-space: nowrap;
+  }
+
+  #rate-label {
+    font-size: 0.7rem;
+    min-width: 2.5em;
+  }
+
+  /* --- Error banner --- */
+  .error-banner {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    text-align: center;
+  }
+}
+
+/* ========================================
+   Responsive: Small mobile (≤380px)
+   Extra tight screens (iPhone SE, etc.)
+   ======================================== */
+@media (max-width: 380px) {
+  .header {
+    padding: 0.5rem 0.5rem;
+  }
+
+  .header h1 {
+    font-size: 0.9rem;
+  }
+
+  .api-key-group {
+    padding: 0.15rem 0.2rem 0.15rem 0.4rem;
+  }
+
+  .api-key-input {
+    font-size: 0.7rem;
+    padding: 0.3rem 0.3rem;
+  }
+
+  .player-bar {
+    padding: 0.4rem 0.4rem calc(0.3rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .player-controls {
+    gap: 0.15rem;
+  }
+
+  .btn-icon:not(.play-btn) {
+    width: 2.3rem !important;
+    height: 2.3rem !important;
+  }
+
+  .play-btn {
+    width: 3rem !important;
+    height: 3rem !important;
+  }
+
+  .reader-content {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* ========================================
+   Responsive: Small mobile (≤380px)
+   Extra tight screens (iPhone SE, etc.)
+   ======================================== */
+@media (max-width: 380px) {
+  .header {
+    padding: 0.5rem 0.5rem;
+  }
+
+  .header h1 {
+    font-size: 0.9rem;
+  }
+
+  .api-key-group {
+    padding: 0.15rem 0.2rem 0.15rem 0.4rem;
+  }
+
+  .api-key-input {
+    font-size: 0.7rem;
+    padding: 0.3rem 0.3rem;
+  }
+
+  .player-bar {
+    padding: 0.4rem 0.4rem calc(0.3rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .player-controls {
+    gap: 0.15rem;
+  }
+
+  .btn-icon:not(.play-btn) {
+    width: 2.3rem !important;
+    height: 2.3rem !important;
+  }
+
+  .play-btn {
+    width: 3rem !important;
+    height: 3rem !important;
+  }
+
+  .reader-content {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* ========================================
+   Responsive: Large desktop (≥1200px)
+   ======================================== */
+@media (min-width: 1200px) {
+  .reader-content {
+    max-width: 48rem;
   }
 }
