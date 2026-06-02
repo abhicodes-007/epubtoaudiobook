@@ -4,6 +4,7 @@ import os
 import platform
 import wave
 import pathlib
+import httpx
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,9 +21,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Nvidia Riva API Configuration
-RIVA_SERVER = os.environ.get("RIVA_SERVER", "grpc.nvcf.nvidia.com:443")
-RIVA_FUNCTION_ID = os.environ.get("RIVA_FUNCTION_ID", "877104f7-e885-42b9-8de8-f6e4c6303969")
+# Nvidia NIM API Configuration
+NIM_TTS_URL = os.environ.get(
+    "NIM_TTS_URL",
+    "https://integrate.api.nvidia.com/v1/tts"
+)
 
 # Magpie TTS configuration
 MAGPIE_SPEAKERS = ["Aria", "Mia", "Jason", "Leo", "Sofia", "Ray", "Pascal", "Diego"]
@@ -30,7 +33,7 @@ MAGPIE_EMOTIONS = ["Neutral", "Calm", "Angry", "Happy", "Sad", "Fearful"]
 MAGPIE_LOCALE = "EN-US"
 RIVA_DEFAULT_VOICE = "Magpie-Multilingual.EN-US.Aria.Neutral"
 
-# Generate all Magpie voice combinations
+
 def get_magpie_voices():
     voices = []
     for speaker in MAGPIE_SPEAKERS:
@@ -46,29 +49,58 @@ def get_magpie_voices():
     return voices
 
 
-def get_tts_service(api_key: str):
-    """Lazy import riva client to avoid import-time crashes from grpcio conflicts."""
-    import riva.client
+def _synthesize_nim(text: str, voice: str, api_key: str) -> bytes:
+    """Synthesize speech using NVIDIA NIM REST API (no gRPC needed)."""
     if not api_key:
-        return None
-    try:
-        auth = riva.client.Auth(
-            uri=RIVA_SERVER,
-            use_ssl=True,
-            metadata_args=[
-                ["function-id", RIVA_FUNCTION_ID],
-                ["authorization", f"Bearer {api_key}"]
-            ]
-        )
-        return riva.client.SpeechSynthesisService(auth)
-    except Exception as e:
-        print(f"Warning: Failed to initialize Riva client: {e}")
-        return None
+        raise RuntimeError("API key is required")
 
+    # Validate voice name
+    if not voice.startswith("Magpie-Multilingual"):
+        print(f"Warning: Invalid voice name '{voice}', using default")
+        voice = RIVA_DEFAULT_VOICE
 
-class TTSRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=5000)
-    voice: str = RIVA_DEFAULT_VOICE
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "audio/wav",
+    }
+    payload = {
+        "model": "nvidia/magpie-tts-multilingual",
+        "input": text,
+        "voice": voice,
+        "response_format": "wav",
+        "sample_rate": 44100,
+    }
+
+    # Use a fresh client per request to avoid connection pool issues
+    with httpx.Client(timeout=60.0) as client:
+        resp = client.post(NIM_TTS_URL, json=payload, headers=headers)
+
+    if resp.status_code != 200:
+        detail = resp.text[:500] if resp.text else f"HTTP {resp.status_code}"
+        raise RuntimeError(f"NIM API error ({resp.status_code}): {detail}")
+
+    content_type = resp.headers.get("content-type", "")
+    if "json" in content_type:
+        # NIM may return JSON error even with 200
+        import json
+        try:
+            body = resp.json()
+            if "detail" in body or "error" in body:
+                raise RuntimeError(f"NIM API: {body.get('detail', body.get('error', str(body)))}")
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    audio = resp.content
+    if len(audio) < 400:
+        raise RuntimeError(f"NIM returned too few bytes ({len(audio)}): {audio[:200]}")
+
+    # If already WAV (starts with RIFF), return directly
+    if audio[:4] == b"RIFF":
+        return audio
+
+    # Otherwise treat as raw PCM and wrap in WAV
+    return _pcm_to_wav(audio, sample_rate=44100)
 
 
 def _pcm_to_wav(pcm_data: bytes, sample_rate: int = 44100, channels: int = 1, sample_width: int = 2) -> bytes:
@@ -82,36 +114,9 @@ def _pcm_to_wav(pcm_data: bytes, sample_rate: int = 44100, channels: int = 1, sa
     return buffer.getvalue()
 
 
-def _synthesize_riva(text: str, voice: str, api_key: str) -> bytes:
-    """Synthesize speech using Nvidia Riva API with Magpie TTS."""
-    import riva.client.proto.riva_audio_pb2 as ra
-
-    tts_service = get_tts_service(api_key)
-    if not tts_service:
-        raise RuntimeError("Riva TTS service not initialized or API key missing")
-    
-    try:
-        # Validate and normalize voice name
-        if not voice.startswith("Magpie-Multilingual"):
-            print(f"Warning: Invalid voice name '{voice}', using default")
-            voice = RIVA_DEFAULT_VOICE
-        
-        response = tts_service.synthesize(
-            text=text,
-            voice_name=voice,
-            language_code="en-US",
-            encoding=ra.LINEAR_PCM,
-            sample_rate_hz=44100
-        )
-        
-        if not response.audio:
-            raise RuntimeError("Riva returned empty audio")
-        
-        # Convert PCM to WAV format with proper headers
-        return _pcm_to_wav(response.audio, sample_rate=44100)
-        
-    except Exception as e:
-        raise RuntimeError(f"Riva TTS failed: {str(e)}")
+class TTSRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=5000)
+    voice: str = RIVA_DEFAULT_VOICE
 
 
 @app.get("/api/health")
@@ -119,15 +124,14 @@ async def health():
     return {
         "ok": True,
         "platform": platform.system(),
-        "tts_backend": "nvidia-riva"
+        "tts_backend": "nvidia-nim"
     }
 
 
 @app.get("/api/config")
 async def get_config():
     return {
-        "riva_server": RIVA_SERVER,
-        "riva_function_id": RIVA_FUNCTION_ID
+        "nim_tts_url": NIM_TTS_URL,
     }
 
 
@@ -142,14 +146,14 @@ async def synthesize(req: TTSRequest, x_api_key: str = Header(..., alias="X-API-
     text = req.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Empty text")
-    
+
     try:
-        audio = await asyncio.to_thread(_synthesize_riva, text, req.voice, x_api_key)
+        audio = await asyncio.to_thread(_synthesize_nim, text, req.voice, x_api_key)
         return Response(content=audio, media_type="audio/wav")
     except Exception as e:
         raise HTTPException(
             status_code=503,
-            detail=f"Riva TTS unavailable: {str(e)}"
+            detail=f"TTS unavailable: {str(e)}"
         )
 
 
