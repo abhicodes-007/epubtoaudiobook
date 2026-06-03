@@ -1144,10 +1144,18 @@ select:focus {
   }
 
   .player-bar.player-minimized {
-    padding: 0.25rem 0.5rem 2.5rem;
+    padding: 0.25rem 0.5rem 0.5rem;
     max-height: 44px;
+    bottom: 3rem;
+  }
+
+  .player-bar.player-minimized::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -3rem;
+    height: 3rem;
+    background: var(--surface);
   }
 }
-
-
-
