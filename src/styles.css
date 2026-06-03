@@ -391,7 +391,7 @@ body {
   z-index: 100;
   border-top: 1px solid var(--border);
   background: var(--surface);
-  padding: 0.7rem 1.25rem 1.75rem;
+  padding: 0.7rem 1.25rem 3rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -418,7 +418,7 @@ body {
 }
 
 .player-bar.player-minimized {
-  padding: 0.35rem 1.25rem 1.25rem;
+  padding: 0.35rem 1.25rem 2.5rem;
   max-height: 52px;
 }
 
@@ -910,7 +910,7 @@ select:focus {
   }
 
   .player-bar {
-    padding: 0.5rem 0.6rem 1.5rem;
+    padding: 0.5rem 0.6rem 3rem;
     gap: 0.35rem;
   }
 
@@ -926,9 +926,12 @@ select:focus {
     gap: 0.25rem;
   }
 
-  /* Hide chapter nav buttons on small mobile — use sidebar dropdown instead */
+  /* Chapter nav buttons on mobile — compact */
   .chapter-nav-btn {
-    display: none !important;
+    font-size: 0.65rem !important;
+    width: 2rem !important;
+    height: 2rem !important;
+    letter-spacing: -0.15em;
   }
 
   /* Make play button the hero */
@@ -1048,7 +1051,7 @@ select:focus {
   }
 
   .player-bar {
-    padding: 0.4rem 0.4rem 1.25rem;
+    padding: 0.4rem 0.4rem 3rem;
   }
 
   .player-controls {
@@ -1094,7 +1097,7 @@ select:focus {
   }
 
   .player-bar {
-    padding: 0.4rem 0.4rem 1.25rem;
+    padding: 0.4rem 0.4rem 3rem;
   }
 
   .player-controls {
@@ -1141,7 +1144,7 @@ select:focus {
   }
 
   .player-bar.player-minimized {
-    padding: 0.25rem 0.5rem 1.25rem;
+    padding: 0.25rem 0.5rem 2.5rem;
     max-height: 44px;
   }
 }
