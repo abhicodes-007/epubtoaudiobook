@@ -18,6 +18,7 @@ import {
 } from "./tts.js";
 
 const AUTO_NEXT_KEY = "tts_auto_next_chapter";
+const PLAYER_MIN_KEY = "tts_player_minimized";
 
 const state = {
   book: null,
@@ -44,6 +45,7 @@ const state = {
   lastServerFailure: 0,
   voiceChangeId: 0,
   autoNextChapter: localStorage.getItem(AUTO_NEXT_KEY) === "true",
+  playerMinimized: localStorage.getItem(PLAYER_MIN_KEY) === "true",
 };
 
 const player = createAudioPlayer();
@@ -102,6 +104,9 @@ const el = {
   pipelineReady: null,
   pipelineLoading: null,
   apiKeyInput: null,
+  playerBar: null,
+  playerRowBottom: null,
+  playerMinimizeBtn: null,
 };
 
 function renderShell() {
@@ -145,7 +150,10 @@ function renderShell() {
         <article class="reader-content" id="reader-content">
           <p class="placeholder">Upload an EPUB, pick a chapter, then press Play to hear sentence-by-sentence audio with the next sentence synthesized in parallel.</p>
         </article>
-        <footer class="player-bar">
+        <footer class="player-bar ${state.playerMinimized ? "player-minimized" : ""}">
+          <button class="btn btn-icon player-minimize-btn" id="btn-minimize-player" title="Minimize player">
+            <span class="minimize-chevron">▾</span>
+          </button>
           <div class="player-row-top">
             <div class="player-controls">
               <button class="btn btn-icon chapter-nav-btn" id="btn-prev-chapter" title="Previous chapter" disabled>⏮⏮</button>
@@ -213,6 +221,14 @@ function renderShell() {
   el.prevChapterBtn = document.getElementById("btn-prev-chapter");
   el.nextChapterBtn = document.getElementById("btn-next-chapter");
   el.autoNextToggle = document.getElementById("auto-next-toggle");
+  el.playerBar = document.querySelector(".player-bar");
+  el.playerRowBottom = document.querySelector(".player-row-bottom");
+  el.playerMinimizeBtn = document.getElementById("btn-minimize-player");
+
+  // Wire minimize toggle
+  el.playerMinimizeBtn.addEventListener("click", togglePlayerMinimize);
+  // Apply initial minimize state
+  updatePlayerMinimizeUI();
 
   // Restore saved API key into input
   const savedKey = getApiKey();
@@ -395,6 +411,33 @@ function updateChapterNavButtons() {
   el.prevChapterBtn.disabled = !hasChapters || state.currentChapterIndex <= 0;
   el.nextChapterBtn.disabled = !hasChapters || state.currentChapterIndex >= state.chapters.length - 1;
 }
+
+// --- Player Minimize ---
+
+function togglePlayerMinimize() {
+  state.playerMinimized = !state.playerMinimized;
+  localStorage.setItem(PLAYER_MIN_KEY, String(state.playerMinimized));
+  updatePlayerMinimizeUI();
+}
+
+function updatePlayerMinimizeUI() {
+  if (!el.playerBar) return;
+  el.playerBar.classList.toggle("player-minimized", state.playerMinimized);
+  const chevron = el.playerMinimizeBtn.querySelector(".minimize-chevron");
+  if (chevron) chevron.textContent = state.playerMinimized ? "▴" : "▾";
+  // Adjust main content bottom padding
+  const mainEl = document.querySelector(".main");
+  if (mainEl) {
+    if (window.innerWidth <= 640) {
+      mainEl.style.paddingBottom = state.playerMinimized ? "60px" : "200px";
+    } else {
+      mainEl.style.paddingBottom = state.playerMinimized ? "60px" : "";
+    }
+  }
+}
+
+// Listen for resize to adjust padding
+window.addEventListener("resize", () => updatePlayerMinimizeUI());
 
 // --- Init ---
 
